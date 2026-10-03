@@ -6,5 +6,6 @@ __pycache__/
 .DS_Store
 artifacts/
 *.egg-info/
+.env.example
 
 dist/
