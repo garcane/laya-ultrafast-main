@@ -60,6 +60,10 @@
     if (rname==='gridcell' && e.querySelector('button,[role="button"]')) continue;
     const base={node:identity(e),role:rname,label:name(e)||rname,
       rect:{x:r.x,y:r.y,w:r.width,h:r.height}};
+    // The accessible description says what a field accepts ("Enter a date…"); the text helper needs it.
+    const description=(e.getAttribute('aria-describedby')||'').split(/\s+/).filter(Boolean)
+      .map(id=>document.getElementById(id)?.innerText?.trim()).filter(Boolean).join(' ').slice(0,160);
+    if (description) base.description=description;
     for (const key of ['checked','selected','expanded']) {
       const value=e.getAttribute('aria-'+key);
       if (value!==null) base[key]=value;

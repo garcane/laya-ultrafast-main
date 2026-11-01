@@ -95,12 +95,32 @@ unreliable: the laptop appears to have suspended during it (it reported a model 
 are erratic. Two sensible moves out of four pages is as consistent with luck as with a real effect, and the checkpoint was
 trained at 768. Conclusion: no validated CPU speed-up; these remain optional, unvalidated settings.
 
-## 4. Flights: not run
+## 4. Google Flights: two live runs, both failed
 
-A live Google Flights run with Laya was **not** performed: it needs a text-helper API key (`TEXT_MODEL_API_KEY`), which
-was unavailable. In a fresh profile, Google also first shows a cookie-consent page the agent must get past. No flight
-task time, decision count, or reliability result exists for this project yet. `scripts/measure_flights.py` is the timed
-live run; it has not been run against a live browser here.
+`examples/flights.py`, default checkpoint (`cklxx/laya-browser`, CPU), headless Edge with a throwaway profile, independent
+verifier on a fresh observation. Same i5-7200U laptop.
+
+| | Run 1 | Run 2 |
+| --- | --- | --- |
+| Text helper | `nvidia/nemotron-3.5-lightning:free` (OpenRouter free tier) | `nvidia/nemotron-3-ultra-550b-a55b` (NVIDIA API) |
+| Duration / decisions | 732 s / 30 decisions (39 forward passes), 17 actions executed | 72 s / 5 decisions, 3 actions executed |
+| What Laya did | Scrolled, accepted Google's cookies, typed *Zurich* and picked ZRH, typed *London* and picked London; then typed *Zurich* into the date field three times (a fourth attempt hit the rate limit), scrolling and clicking the calendar's Done in between | Chose Scroll down on the Flights home page; none of its three executed scrolls changed the observed page |
+| Ended by | Text helper HTTP 429 (free-model shared rate limit) | No-progress stop (`blocked`) |
+| Verifier | destination only | nothing |
+| Steady decision median | 19.0 s | 12.6 s |
+
+What these show:
+
+- **The bottleneck is Laya's decisions.** On nearly the same page, run 1 filled origin and destination correctly and run 2
+  never touched the form. Neither run set one-way or searched.
+- **Run 1 exposed a text-helper gap**, fixed since: every model tested answered *Zurich* for Google's date box, labelled
+  only "Departure". The page's accessible description ("Enter a date or use the arrow keys…") now reaches the helper;
+  offline, `nemotron-3-ultra` then answered with the date in 5 of 6 tries. Run 2 never reached the date field, so this
+  fix is unproven in a live run.
+- **The verifier mis-read a correct origin** in run 1 (Google labels the field "Where from? Zürich ZRH"); it now matches
+  the label prefix and still requires the exact value. It would not have changed either verdict.
+- Free text-model tiers were not usable for a full run: guardrails, ZDR rules, shared-pool 429s and a daily cap all
+  intervened. Run 2's NVIDIA endpoint had none of these problems.
 
 ## Reproduce
 

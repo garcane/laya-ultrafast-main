@@ -25,13 +25,18 @@ def verify(page):
         date_in_url = False
     actions = page["actions"]
     values = {a["label"].strip(): a.get("value") for a in actions}
+
+    def field(prefix):
+        # Google appends the chosen place to a label ("Where from? Zürich ZRH"); the value must still match exactly.
+        return next((a.get("value") for a in actions if a["label"].strip().startswith(prefix)), None)
+
     flights = [a["label"] for a in actions if "Select flight" in a["label"]]
     checks = {
         "search_page": parsed.hostname == "www.google.com" and parsed.path == "/travel/flights/search",
         "one_way": values.get("Change ticket type. One way") == "One way",
-        "origin": values.get("Where from?") == "Zürich",
-        "destination": values.get("Where to?") == "London",
-        "date": values.get("Departure") == "Sun, Sep 20",
+        "origin": field("Where from?") == "Zürich",
+        "destination": field("Where to?") == "London",
+        "date": field("Departure") == "Sun, Sep 20",
         "year": date_in_url or "departing 2026-09-20" in page["text"],
         "results": bool(flights) and all("Sunday, September 20" in f for f in flights),
     }

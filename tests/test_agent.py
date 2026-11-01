@@ -287,6 +287,34 @@ def test_flight_verification_rejects_wrong_trip(changed):
     assert not verify(actual)["passed"]
 
 
+def test_flight_verification_reads_googles_labels_with_the_chosen_place():
+    from examples.flights import verify
+
+    actual = {
+        "url": "https://www.google.com/travel/flights/search?tfs=example",
+        "text": "Track prices from Zürich to London departing 2026-09-20",
+        "actions": [
+            {"label": "Change ticket type. One way", "value": "One way"},
+            {"label": "Where from? Zürich ZRH", "value": "Zürich"},
+            {"label": "Open Where from? Zürich ZRH", "value": "Zürich"},
+            {"label": "Where to? London LHR", "value": "London"},
+            {"label": "Departure", "value": "Sun, Sep 20"},
+            {"label": "Nonstop flight on Sunday, September 20. Select flight", "value": ""},
+        ],
+    }
+    assert verify(actual)["passed"]
+    actual["actions"][1]["value"] = "Zug"  # a longer label is accepted; a wrong value under it is not
+    assert verify(actual)["checks"]["origin"] is False
+
+
+def test_text_helper_sees_a_fields_accessible_description_only_when_present():
+    p = page()
+    date = {"id": "e9", "kind": "fill", "label": "Departure", "role": "textbox", "value": "", "node": 40,
+            "description": "Enter a date or use the arrow keys to change the current date"}
+    assert text_helper.field_context("g", date, p, [])["field"]["description"].startswith("Enter a date")
+    assert "description" not in text_helper.field_context("g", p["actions"][0], p, [])["field"]
+
+
 @pytest.mark.parametrize(
     "content", ["Thinking: Zurich", '{"text":null}', '{"text":"Zurich","extra":true}', '{"text":123}']
 )

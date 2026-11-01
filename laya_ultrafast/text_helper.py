@@ -43,7 +43,11 @@ def post_json(url, key, body):
 def field_context(goal, action, page, history):
     return {
         "goal": goal,
-        "field": {k: action.get(k) for k in ("label", "role", "value")},
+        "field": {
+            **{k: action.get(k) for k in ("label", "role", "value")},
+            # What the field accepts, from its accessible description ("Enter a date…"), when the page provides one.
+            **({"description": action["description"]} if action.get("description") else {}),
+        },
         "page": {"title": page["title"], "text": page["text"][:6000]},
         "recent_actions": [{k: h.get(k) for k in ("action", "text")} for h in history[-6:]],
     }

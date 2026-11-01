@@ -6,8 +6,8 @@ Give it one goal. Laya, running in your process, picks an operation and an obser
 writes text only when the operation is `TYPE_TEXT`. No account or API key is needed for the decision model.
 
 > [!IMPORTANT]
-> **Status: the Laya integration is built and tested offline; a live Google Flights success with Laya has not been
-> demonstrated yet.** See [Evidence and limits](#evidence-and-limits) for exactly what has and has not been measured.
+> **Status: the Laya integration is built and tested offline. Two live Google Flights runs with Laya both failed
+> independent verification.** See [Evidence and limits](#evidence-and-limits) for exactly what has and has not been measured.
 
 ## What this is
 
@@ -231,7 +231,8 @@ Architecture and migration: [docs/migration.md](docs/migration.md) · [docs/desi
   never applied the requested category filter.
 - **Latency.** On an i5-7200U laptop CPU a decision took about 6–40 s (noisy). That is the opposite of "ultrafast";
   GPU performance was not measured. The fine-tune's model card reports 22–27 ms on a high-end GPU.
-- **Google Flights with Laya has not been run**: it needs a text-helper API key that was unavailable.
+- **Google Flights with Laya failed twice.** One run set origin and destination, then looped on the date field; the
+  other only scrolled. Neither set one-way or searched. Details: [performance-laya.md](docs/performance-laya.md).
 
 Treat Laya as a working *mechanism* whose decision quality you must measure on your own checkpoint and hardware before
 trusting it.
