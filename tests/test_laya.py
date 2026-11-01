@@ -1,6 +1,7 @@
 """The Laya integration boundary, offline: a fake Laya checkpoint, a fake text helper, a fake browser."""
 
 import math
+import re
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -431,16 +432,28 @@ def test_metrics_keep_decisions_browser_and_text_helper_apart(runner, monkeypatc
     assert metrics["decision_model"] == "fake · generic · cpu"
 
 
-# Jev / TypeSafe are no longer a runtime dependency.
-def test_no_typesafe_endpoint_or_credential_in_the_package():
+# The only credential the package reads is the text helper's; the decision model needs no account.
+def test_decision_model_needs_no_api_key():
     package = Path(loop.__file__).parent
-    source = "".join(p.read_text(encoding="utf-8") for p in package.rglob("*") if p.suffix in {".py", ".js", ".html"})
-    assert "TYPESAFE" not in source and "api.typesafe.ai" not in source
+    source = "".join(p.read_text(encoding="utf-8") for p in package.rglob("*.py"))
+    assert set(re.findall(r"[A-Z_]*API_KEY", source)) == {"TEXT_MODEL_API_KEY"}
+    assert "https://api." not in source.replace("https://api.deepseek.com", "")
 
 
-def test_default_decision_model_is_generic_laya_loaded_from_env():
-    decider = decision_model_from_env({"LAYA_PRELOAD": "0"}, loader=Loader())
-    assert decider.model == "convaiinnovations/laya" and decider.device is None
+def test_default_decision_model_is_the_pinned_browser_fine_tune():
+    loader = Loader()
+    decider = decision_model_from_env({"LAYA_PRELOAD": "1"}, loader=loader)
+    assert decider.model == "cklxx/laya-browser" and decider.device is None
+    assert loader.calls == [("cklxx/laya-browser", None, laya_backend.DEFAULT_REVISION)]
+
+
+def test_the_default_pin_never_applies_to_another_checkpoint():
+    loader = Loader()
+    decision_model_from_env({"LAYA_MODEL": "convaiinnovations/laya"}, loader=loader)
+    assert loader.calls == [("convaiinnovations/laya", None, None)]
+    other = Loader()
+    decision_model_from_env({"LAYA_MODEL": "cklxx/laya-browser", "LAYA_REVISION": "abc"}, loader=other)
+    assert other.calls == [("cklxx/laya-browser", None, "abc")]
 
 
 def test_importing_the_package_does_not_import_torch():

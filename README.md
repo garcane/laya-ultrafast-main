@@ -3,19 +3,18 @@
 **A local, open-weight browser agent using [Laya](https://huggingface.co/convaiinnovations/laya) as its decision model.**
 
 Give it one goal. Laya, running in your process, picks an operation and an observed element. A separate small LLM
-writes text only when the operation is `TYPE_TEXT`. No Jev or TypeSafe account is involved.
+writes text only when the operation is `TYPE_TEXT`. No account or API key is needed for the decision model.
 
 > [!IMPORTANT]
 > **Status: the Laya integration is built and tested offline; a live Google Flights success with Laya has not been
 > demonstrated yet.** See [Evidence and limits](#evidence-and-limits) for exactly what has and has not been measured.
-> The demo video in `docs/` is the *original Jev* run, not Laya.
 
 ## What this is
 
-This project is a fork of [browser-use/jev-ultrafast](https://github.com/browser-use/jev-ultrafast) (MIT, © Browser Use)
-in which the hosted TypeSafe Jev model is replaced by Laya. The browser loop is inherited, not rewritten:
+The browser loop is derived from Browser Use's [jev-ultrafast](https://github.com/browser-use/jev-ultrafast)
+(MIT, © Browser Use), with the decision model replaced by a local one. The loop is inherited, not rewritten:
 
-| Inherited unchanged from jev-ultrafast | New in this project |
+| Inherited from the Browser Use project | New in this project |
 | --- | --- |
 | One atomic DOM snapshot → indexed element table ([snapshot.js](laya_ultrafast/snapshot.js)) | In-process Laya decision model ([laya_backend.py](laya_ultrafast/laya_backend.py)) |
 | Operation-specific target heads, one observation, one decision cycle | `DecisionModel` interface; every answer validated before an action can exist |
@@ -79,18 +78,20 @@ Chrome connects through Browser Harness; run `uv run browser-harness --doctor` i
 remote debugging when prompted. To use a separate browser instead of your own profile, start Chromium with
 `--remote-debugging-port=9333 --user-data-dir=<throwaway dir>` and set `BU_CDP_URL=http://127.0.0.1:9333`.
 
-**Behind a TLS-intercepting proxy?** Hugging Face downloads use `certifi` and may fail with
+**Behind a TLS-intercepting proxy?** The text helper verifies certificates against your operating system's trust
+store (via `truststore`), so a CA your OS trusts works. Hugging Face downloads may still fail with
 `CERTIFICATE_VERIFY_FAILED`. Do not disable verification: point `SSL_CERT_FILE` at a bundle that includes your CA, or
-download the checkpoint files yourself and set `LAYA_MODEL` to that directory.
+download the checkpoint files yourself and set `LAYA_MODEL` to that directory. On Windows, if Python crashes with
+`OPENSSL_Applink`, rebuild the environment on a python.org Python: `uv sync --python <path to python.exe>`.
 
 ## Choose a checkpoint
 
 ```env
-LAYA_MODEL=convaiinnovations/laya      # generic Laya (default)
-# LAYA_MODEL=cklxx/laya-browser        # browser fine-tune
+LAYA_MODEL=cklxx/laya-browser          # browser fine-tune (default, pinned to the measured commit)
+# LAYA_MODEL=convaiinnovations/laya    # generic Laya
 LAYA_DEVICE=auto                       # auto | cpu | cuda | cuda:0 | mps | xpu
 LAYA_PRELOAD=1                         # load + warm up before the task clock starts
-# LAYA_REVISION=<commit sha>           # pin a Hub commit
+# LAYA_REVISION=<commit sha>           # blank pins the default to the measured commit; set it to pin another
 ```
 
 The two are **not equivalent**, and the project reports which one ran (the Agent, inspector, and benchmark output
@@ -109,9 +110,27 @@ benchmark against 0.766 after fine-tuning, so do not assume generic Laya drives 
 model card reports about 20–26% on its hardest held-out multi-step suite and notes it often says `DONE` too early.
 **Test the checkpoint you configure**; `scripts/bench_decisions.py` does this offline.
 
-Laya and `laya-browser` are Apache-2.0. Browser Use's `jev-ultrafast` is MIT (see [LICENSE](LICENSE)). The compact
+Laya and `laya-browser` are Apache-2.0. The inherited browser loop is MIT, © Browser Use (see [LICENSE](LICENSE)). The compact
 request format is adapted from the `laya-browser` reference wrapper. Training data licences for the fine-tune are
 listed on its model card.
+
+## Running on CPU (no GPU)
+
+This project is meant to run locally, and a CPU is enough to run it, but not to run it fast. Expect:
+
+- **First start:** about a minute to load the checkpoint (plus a download of roughly 0.6 GB the first time). The inspector
+  loads it once at startup; `LAYA_PRELOAD=1` does the same for scripts, before any task clock starts.
+- **Each decision:** seconds to tens of seconds on a 2-core laptop CPU (measured: 6–40 s, noisy), against tens of
+  milliseconds the model's card reports on a high-end GPU. A task takes many decisions, so runs take minutes.
+- **A busy machine can starve the browser.** In one measured run, inference saturated every core and the browser
+  daemon timed out. Close other heavy programs while it runs.
+- **Quality is experimental.** The default checkpoint did not complete the bundled local task in the one real-loop run, and
+  made no sensible first move on four recorded pages. Treat results as something to inspect, not rely on.
+
+`LAYA_HEAD_MAX_LEN` and `LAYA_PAGE_TEXT_CHARS` shrink what the model reads. In a small exploratory test, halving the head
+budget (768 to 384) cut decision time by roughly 10–40% with the same decisions, and a much smaller one (192) changed
+decisions without a clear speed-up. Four pages cannot say whether that is better or worse, and the checkpoint was trained
+at 768, so these are unvalidated knobs, not defaults.
 
 ## Run Google Flights
 
@@ -173,13 +192,12 @@ correctness cannot be verified generically.
 
 ```bash
 uv run python scripts/bench_decisions.py --repeats 20          # model only, offline, real recorded pages
-git worktree add artifacts/jev-baseline f2fbdd5                # original Jev source, frozen
-uv run --env-file .env python scripts/compare_flights.py --jev-source artifacts/jev-baseline --repeats 3
+uv run --env-file .env python scripts/measure_flights.py --output artifacts/flights/run-1   # one live, timed run
 ```
 
-The comparison alternates arms and keeps every attempt. Both arms share the browser, viewport, task, text helper and
-verifier. The Jev arm needs your own TypeSafe key. Results and caveats: [performance-laya.md](docs/performance-laya.md).
-The original Jev numbers are kept, labelled, in [performance-jev.md](docs/performance-jev.md).
+`measure_flights.py` records task time, decisions, model calls, browser protocol calls, text-helper calls, model
+load and warm-up, and the independent verifier's verdict on a fresh observation. Results and caveats:
+[performance-laya.md](docs/performance-laya.md).
 
 ## Small enough to read
 
@@ -198,12 +216,30 @@ Architecture and migration: [docs/migration.md](docs/migration.md) · [docs/desi
 
 ## Evidence and limits
 
-EVIDENCE_PLACEHOLDER
+**Established** (details and caveats in [performance-laya.md](docs/performance-laya.md)):
+
+- The integration works end to end: Laya loads once and is reused; operation and target decisions flow through strict
+  validation to the executor; the text helper is invoked only for `TYPE_TEXT`; decision, browser and text-helper costs are
+  reported separately. 78 offline tests pass, including 15 malformed-answer mutations that must never reach the browser.
+- A real-loop run on the bundled stays page in headless Edge exercised all of this with the `cklxx/laya-browser` checkpoint.
+
+**Not established, and the honest headline is negative so far:**
+
+- **Decision quality.** On four recorded real pages, neither checkpoint chose a sensible first move (generic Laya
+  answered `DONE`/`BLOCKED` everywhere; the fine-tune's moves were wrong too, identical to its author's own wrapper). In
+  the real loop on the local stays page, the fine-tune did **not** complete the task: it oscillated between two links and
+  never applied the requested category filter.
+- **Latency.** On an i5-7200U laptop CPU a decision took about 6–40 s (noisy). That is the opposite of "ultrafast";
+  GPU performance was not measured. The fine-tune's model card reports 22–27 ms on a high-end GPU.
+- **Google Flights with Laya has not been run**: it needs a text-helper API key that was unavailable.
+
+Treat Laya as a working *mechanism* whose decision quality you must measure on your own checkpoint and hardware before
+trusting it.
 
 The DOM reader handles common HTML and ARIA controls, not the full accessible-name specification. Shadow roots, frames,
 canvas, uploads, pop-up tabs, nested scrolling, and arbitrary keyboard widgets are outside this MVP. Owned tabs share
 the existing browser profile unless you point `BU_CDP_URL` elsewhere. A `DONE` choice still requires independent
-outcome verification. This project makes no claim that Laya is faster, cheaper, or more accurate than Jev.
+outcome verification.
 
 ## Development
 
@@ -216,10 +252,10 @@ uv build
 ```
 
 Tests are offline (a fixture blocks sockets) and need no model weights or API keys. Live examples, recording scripts and
-`scripts/compare_flights.py` call a browser and a paid text-helper API. Credentials and raw traces stay ignored.
+`scripts/measure_flights.py` call a browser and a paid text-helper API. Credentials and raw traces stay ignored.
 
 ---
 
-[Browser Use](https://github.com/browser-use/browser-use) · [jev-ultrafast](https://github.com/browser-use/jev-ultrafast) ·
+[Browser Use](https://github.com/browser-use/browser-use) · [jev-ultrafast (original)](https://github.com/browser-use/jev-ultrafast) ·
 [Browser Harness](https://github.com/browser-use/browser-harness) · [Laya](https://github.com/NandhaKishorM/laya) ·
 [laya-browser](https://huggingface.co/cklxx/laya-browser)

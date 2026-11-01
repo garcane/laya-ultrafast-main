@@ -2,9 +2,11 @@
 
 import json
 import os
+import ssl
 import time
 
 import httpx
+import truststore
 
 from .questions import TEXT_VALUE
 
@@ -12,10 +14,14 @@ _CLIENT = None
 
 
 def client():
-    """Created on first use: importing the package must not build a TLS context or touch the network."""
+    """Created on first use: importing the package must not build a TLS context or touch the network.
+
+    Certificates are verified against the operating system's trust store, so a corporate or antivirus CA the OS
+    trusts works too. Verification is never disabled.
+    """
     global _CLIENT
     if _CLIENT is None:
-        _CLIENT = httpx.Client(http2=True, timeout=25)
+        _CLIENT = httpx.Client(http2=True, timeout=25, verify=truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT))
     return _CLIENT
 
 
@@ -47,8 +53,8 @@ def field_text(context):
     key = os.environ.get("TEXT_MODEL_API_KEY")
     if not key:
         raise ValueError("TYPE_TEXT needs TEXT_MODEL_API_KEY; no text is hardcoded or guessed by the executor.")
-    base = os.environ.get("TEXT_MODEL_BASE_URL", "https://api.deepseek.com/v1").rstrip("/")
-    model = os.environ.get("TEXT_MODEL", "deepseek-chat")
+    base = os.environ.get("TEXT_MODEL_BASE_URL", "https://integrate.api.nvidia.com/v1").rstrip("/")
+    model = os.environ.get("TEXT_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
     reasoning = {"thinking": {"type": "disabled"}} if "api.deepseek.com/" in base else {"reasoning": {"effort": "low"}}
     if os.environ.get("TEXT_MODEL_REASONING") == "none":
         reasoning = {"reasoning": {"enabled": False}}

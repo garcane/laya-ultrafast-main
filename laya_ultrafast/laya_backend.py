@@ -15,7 +15,11 @@ import re
 import threading
 import time
 
-DEFAULT_MODEL = "convaiinnovations/laya"
+# Third-party browser fine-tune of Laya (Apache-2.0), pinned to the commit that was inspected and measured.
+# Generic `convaiinnovations/laya` is selectable, but it answered DONE/BLOCKED on every recorded page
+# (docs/performance-laya.md).
+DEFAULT_MODEL = "cklxx/laya-browser"
+DEFAULT_REVISION = "645cf366a2ae35f1086e8c20eff48f909bb49206"
 PAGE_TEXT_CHARS = 1200
 LABEL_CHARS = 50
 BROWSER_MAX_OPTIONS = 60  # what the browser fine-tune was trained to read in one head
@@ -232,10 +236,11 @@ def decision_model_from_env(environ=None, loader=None):
     def number(name):
         return int(env[name]) if env.get(name) else None
 
+    model = env.get("LAYA_MODEL") or DEFAULT_MODEL
     config = (
-        env.get("LAYA_MODEL") or DEFAULT_MODEL,
+        model,
         env.get("LAYA_DEVICE") or "auto",
-        env.get("LAYA_REVISION") or None,
+        env.get("LAYA_REVISION") or (DEFAULT_REVISION if model == DEFAULT_MODEL else None),
         number("LAYA_MAX_LEN"),
         number("LAYA_HEAD_MAX_LEN"),
         number("LAYA_MAX_OPTIONS"),
@@ -243,7 +248,7 @@ def decision_model_from_env(environ=None, loader=None):
     )
     key = (config, id(loader))
     if key not in _MODELS:
-        model, device, revision, max_len, head_max_len, max_options, page_text_chars = config
+        _, device, revision, max_len, head_max_len, max_options, page_text_chars = config
         _MODELS[key] = LayaDecisionModel(
             model,
             device,

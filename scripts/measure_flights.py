@@ -1,7 +1,8 @@
-"""One live measured flight search. `--source` may be this checkout (Laya) or a frozen original Jev checkout.
+"""One live measured flight search with the configured Laya checkpoint.
 
-Both arms use the same task, the same independent verifier (imported from this checkout), and the same
-browser setup. Run `scripts/compare_flights.py` to alternate arms and summarise.
+Records task time, decisions, model calls, browser protocol calls, text-helper calls, model load and warm-up,
+and the independent verifier's verdict on a fresh observation. `--source` may point at another checkout of this
+project to compare revisions.
 """
 
 import argparse
@@ -19,7 +20,7 @@ parser.add_argument("--source", default=".")
 parser.add_argument("--output", required=True)
 args = parser.parse_args()
 source = Path(args.source).resolve()
-package = "laya_ultrafast" if (source / "laya_ultrafast").is_dir() else "jev_ultrafast"
+package = "laya_ultrafast"
 sys.path.insert(0, str(source))
 Agent = importlib.import_module(package).Agent
 browser_module = importlib.import_module(package + ".browser")
@@ -71,7 +72,7 @@ finally:
     state["configuration"] = {
         key: os.environ.get(key)
         for key in (
-            "TYPESAFE_MODEL", "LAYA_MODEL", "LAYA_DEVICE", "LAYA_REVISION", "LAYA_MAX_LEN", "LAYA_HEAD_MAX_LEN",
+            "LAYA_MODEL", "LAYA_DEVICE", "LAYA_REVISION", "LAYA_MAX_LEN", "LAYA_HEAD_MAX_LEN",
             "LAYA_MAX_OPTIONS", "TEXT_MODEL", "TEXT_MODEL_BASE_URL", "TEXT_MODEL_REASONING",
         )
     }

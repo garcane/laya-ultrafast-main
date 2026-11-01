@@ -1,13 +1,13 @@
-# Replacing Jev with Laya
+# Architecture
 
 ```text
-Original:  Browser → TypeSafe Jev (HTTPS, API key) → operation + target → executor
-New:       Browser → Laya (in this process)        → operation + target → executor
+Browser → Laya (in this process) → operation + target → validated → executor
 ```
 
-Only the decision layer changed. The observation (`snapshot.js`), the indexed action space, the freshness and
-occlusion checks, the executor, the text helper, the independent verification, and the offline test approach are
-inherited unchanged from [jev-ultrafast](https://github.com/browser-use/jev-ultrafast).
+The decision model is the only model-specific part. The observation (`snapshot.js`), the indexed action space, the
+freshness and occlusion checks, the executor, the text helper, the independent verification, and the offline test
+approach are inherited from Browser Use's [jev-ultrafast](https://github.com/browser-use/jev-ultrafast) (MIT).
+
 
 ## The integration boundary
 
@@ -18,10 +18,9 @@ class DecisionModel(Protocol):
     def choose(self, state: dict, questions: dict) -> dict: ...
 ```
 
-`questions` is the same typed structure Jev received: an `operation` question, plus one `<operation>_target`
-question per supported operation. The return value is `{"answers": {...}, "model": ..., "usage": ..., "info": ...}`
-where each answer is `{"choice", "probabilities", "confidence"}`. That is both Laya's native `predict(state,
-questions)` result and Jev's `/v1/systemone` wire shape, which is why almost nothing downstream moved.
+`questions` is a typed structure: an `operation` question, plus one `<operation>_target` question per supported
+operation. The return value is `{"answers": {...}, "model": ..., "usage": ..., "info": ...}` where each answer is
+`{"choice", "probabilities", "confidence"}`, the shape of Laya's native `predict(state, questions)` result.
 
 `model.choose(page, goal, history, decider)` builds the request, calls the decider, and **validates every answer**.
 The decider is never trusted: a backend bug cannot widen what the browser is allowed to do.
@@ -120,14 +119,12 @@ Browser mutations are still never retried, and execution is still logged before 
 | `browser_calls`, `browser_ms` | Browser protocol calls and time inside them |
 | `text_helper_calls`, `text_helper_ms` | Text-helper requests and time |
 
-`scripts/bench_decisions.py` measures the model alone on recorded real pages. `scripts/compare_flights.py`
-alternates frozen-Jev and Laya runs of the live flight task. Results: [performance-laya.md](performance-laya.md).
+`scripts/bench_decisions.py` measures the model alone on recorded real pages; `scripts/measure_flights.py` times one
+live flight run. Results: [performance-laya.md](performance-laya.md).
 
-## Why in-process, and what was not kept
+## Why in-process
 
 The goal is low-latency local inference, so the decision model runs in the agent's process. An HTTP hop would add a
-round trip and a second process to manage, and buys nothing here. `laya-serve` exposes `/v1/systemone` and
-`cklxx/laya-browser` ships a Jev-compatible server, so an HTTP `DecisionModel` is a thin class if someone needs a
-shared GPU box; it is not included. The TypeSafe endpoint, `TYPESAFE_API_KEY`, and `TYPESAFE_MODEL` are removed
-(a test asserts the package contains none of them). The original Jev implementation remains in git history
-(`f2fbdd5`) for the benchmark.
+round trip and a second process to manage, and buys nothing here. `laya-serve` exposes an HTTP interface, so a remote
+`DecisionModel` is a thin class if someone needs a shared GPU box; it is not included. The decision model needs no
+account or API key; the only credential the package reads is the text helper's (a test asserts this).
