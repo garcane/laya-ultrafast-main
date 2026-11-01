@@ -1,142 +1,225 @@
-<img src="docs/banner.svg" alt="Jev Ultrafast · Browser Use × TypeSafe" width="100%" />
+# Laya Ultrafast
 
-# Jev Ultrafast ⚡
+**A local, open-weight browser agent using [Laya](https://huggingface.co/convaiinnovations/laya) as its decision model.**
+
+Give it one goal. Laya, running in your process, picks an operation and an observed element. A separate small LLM
+writes text only when the operation is `TYPE_TEXT`. No Jev or TypeSafe account is involved.
 
 > [!IMPORTANT]
-> **The Browser Use Cloud waitlist is open.** Get early access to ultrafast browser agents in the cloud.
-> **[Join the waitlist →](https://browser-use.com/ultrafast?utm_source=github&utm_medium=readme&utm_campaign=jev-ultrafast)**
+> **Status: the Laya integration is built and tested offline; a live Google Flights success with Laya has not been
+> demonstrated yet.** See [Evidence and limits](#evidence-and-limits) for exactly what has and has not been measured.
+> The demo video in `docs/` is the *original Jev* run, not Laya.
 
-**A browser agent with a dynamic, indexed action space.**
+## What this is
 
-Give it one goal. [TypeSafe's Jev](https://docs.typesafe.ai/introduction) picks an operation and an element. A small LLM writes text only when the operation is `TYPE_TEXT`.
+This project is a fork of [browser-use/jev-ultrafast](https://github.com/browser-use/jev-ultrafast) (MIT, © Browser Use)
+in which the hosted TypeSafe Jev model is replaced by Laya. The browser loop is inherited, not rewritten:
 
-**Zürich → London on Google Flights in 7.1 seconds.** One natural-language goal, actual text generation, and loading waits included.
+| Inherited unchanged from jev-ultrafast | New in this project |
+| --- | --- |
+| One atomic DOM snapshot → indexed element table ([snapshot.js](laya_ultrafast/snapshot.js)) | In-process Laya decision model ([laya_backend.py](laya_ultrafast/laya_backend.py)) |
+| Operation-specific target heads, one observation, one decision cycle | `DecisionModel` interface; every answer validated before an action can exist |
+| Stale-page detection, freshness checks, click-occlusion checks, bounded execution | Coarse-to-fine selection for wide action spaces |
+| Separate text helper, independent final verification, `DONE`/`BLOCKED` | Load/warm-up/decision/browser/text latency reported separately |
+| Inspector, recording scripts, offline tests | `Task` abstraction; flights and a hotel task share one agent |
 
-<a href="docs/demo.mp4"><img src="docs/demo.gif" alt="A real Google Flights search at 1× speed, with generated city names and dynamic operation/target decisions" width="100%" /></a>
+## What Laya does here
 
-[Watch the MP4](docs/demo.mp4) · [Measurements](docs/performance.md) · [Read the loop](jev_ultrafast/agent.py)
-
-## The action space
-
-Every observation produces a new element table:
-
-```text
-[1] button    Change ticket type · Round trip
-[2] combobox  Where from?        · San Francisco
-[3] combobox  Where to?          · empty
-[4] textbox   Departure          · empty
-...
-```
-
-The operations are `CLICK`, `TYPE_TEXT`, `SELECT`, `SCROLL_UP`, `SCROLL_DOWN`, `WAIT`, `DONE`, and `BLOCKED`. Only supported operations and targets are offered.
+Laya is a non-autoregressive "System 1" model: one bidirectional-encoder forward pass answers several typed
+questions with calibrated probabilities. It does not generate text. Each step it receives the observed state and
+these questions, in a single call:
 
 ```text
-                      one TypeSafe request
-                     ┌───────────────────────────┐
-page → element table → operation                 │
-                     │ click_target              │
-                     │ type_text_target          │
-                     │ select_target, if present │
-                     └─────────────┬─────────────┘
-                         use the matching target
-                                   │
-                    CLICK [7] ─────┤──→ browser
-                TYPE_TEXT [3] ─────┘
-                          ↓
-                   small LLM → text → browser
+page → element table → operation                 ┐
+                       click_target              │ one Laya predict call
+                       type_text_target          │ (one forward pass for pages that fit)
+                       select_target, if present ┘
+                                  │
+                use only the selected operation's target
+                                  │
+              CLICK [7] ──────────┴──→ browser          TYPE_TEXT [3] ──→ small LLM → text → browser
 ```
 
-Target questions are speculative. If the operation is `CLICK`, only `click_target` can execute. Two decisions, **one network round trip**. Each target head contains only compatible elements. Native dropdown choices carry an observed element/option index.
+The operations are `CLICK`, `TYPE_TEXT`, `SELECT`, `SCROLL_UP`, `SCROLL_DOWN`, `WAIT`, `DONE`, `BLOCKED`. Only
+supported operations and targets are offered. Every element has one index; each target head contains only compatible
+elements; native dropdown options carry an observed element/option index.
 
-There are no site-specific action scripts or prepared field strings in the policy. The Flights example supplies a goal and independently verifies the outcome. The screenshot renderer adds labels afterward; it does not drive the browser.
+The model never emits selectors, coordinates, JavaScript, or shell commands. Its output is a choice among
+offered indices, validated strictly ([details](docs/migration.md#response-validation)), and mapped back to an observed
+DOM node. A malformed answer causes no browser mutation. There are no site-specific action scripts or prepared field
+strings in the policy.
 
-## Try it
+**Wide pages.** Laya's option budget is small, so a head wider than `max_options` is answered coarse-to-fine: chunks in
+the same pass, then the chunk winners in one more. Narrow pages cost one forward pass.
+
+## Why a separate text helper
+
+Laya chooses; it does not write. When `TYPE_TEXT` is selected, a small OpenAI-compatible LLM receives the goal, the
+field, visible page context, and recent actions, and must return exactly `{"text": "..."}` before anything is typed.
+That keeps city names, dates, and search strings out of the decision layer, and lets the two models be swapped
+independently. A generated value survives a stale-page retry only while the helper's entire input is identical.
+
+## Install
+
+Requires Python ≥ 3.12 and Chrome (or another Chromium) reachable by [Browser Harness](https://github.com/browser-use/browser-harness).
 
 ```bash
-git clone https://github.com/browser-use/jev-ultrafast.git
-cd jev-ultrafast
+git clone <this repository>
+cd laya-ultrafast
 uv sync
-cp .env.example .env
-# Add TYPESAFE_API_KEY and TEXT_MODEL_API_KEY.
-uv run jev
+cp .env.example .env     # set TEXT_MODEL_API_KEY for the text helper
+uv run laya-ultrafast    # inspector at http://127.0.0.1:8766
 ```
 
-Open **http://127.0.0.1:8766** and click **Start demo → Run automatically**. The inspector shows numbered elements, operation probabilities, target probabilities, and executed actions. **Choose next** pauses before execution.
+`uv sync` installs `laya` and PyTorch. The default PyTorch wheel on Windows and macOS runs on CPU (Apple Silicon uses
+PyTorch's MPS backend); for NVIDIA/CUDA install a CUDA build of PyTorch per [pytorch.org](https://pytorch.org/get-started/locally/).
+Laya 0.3.26 has no MLX backend. The first run downloads the checkpoint from Hugging Face (about 0.6–0.8 GB).
 
-Chrome connects through [Browser Harness](https://github.com/browser-use/browser-harness), installed by `uv sync`. Run `uv run browser-harness --doctor` if it needs connecting. Allow remote debugging in Chrome when prompted.
+Chrome connects through Browser Harness; run `uv run browser-harness --doctor` if it needs connecting, and allow
+remote debugging when prompted. To use a separate browser instead of your own profile, start Chromium with
+`--remote-debugging-port=9333 --user-data-dir=<throwaway dir>` and set `BU_CDP_URL=http://127.0.0.1:9333`.
 
-`TEXT_MODEL_API_KEY` is an OpenRouter key in the example configuration. The current demo uses `inception/mercury-2.5` with reasoning disabled. Gemini, GLM, and DeepSeek can also use the OpenAI-compatible text helper; configure the appropriate model, endpoint, and reasoning setting.
+**Behind a TLS-intercepting proxy?** Hugging Face downloads use `certifi` and may fail with
+`CERTIFICATE_VERIFY_FAILED`. Do not disable verification: point `SSL_CERT_FILE` at a bundle that includes your CA, or
+download the checkpoint files yourself and set `LAYA_MODEL` to that directory.
 
-## Use the library
+## Choose a checkpoint
+
+```env
+LAYA_MODEL=convaiinnovations/laya      # generic Laya (default)
+# LAYA_MODEL=cklxx/laya-browser        # browser fine-tune
+LAYA_DEVICE=auto                       # auto | cpu | cuda | cuda:0 | mps | xpu
+LAYA_PRELOAD=1                         # load + warm up before the task clock starts
+# LAYA_REVISION=<commit sha>           # pin a Hub commit
+```
+
+The two are **not equivalent**, and the project reports which one ran (the Agent, inspector, and benchmark output
+all print `checkpoint · kind · device`):
+
+| | Generic Laya | `cklxx/laya-browser` |
+| --- | --- | --- |
+| Source | [convaiinnovations/laya](https://huggingface.co/convaiinnovations/laya), Apache-2.0 | [cklxx/laya-browser](https://huggingface.co/cklxx/laya-browser), Apache-2.0, **third-party** fine-tune of Laya |
+| Trained on browser tasks | No | Yes (Mind2Web, NNetNav, WebChain, synthetic forms), in this request format |
+| Token budget (`max_len` / `head_max_len`) | 512 / 192 | 1024 / 768 |
+| `max_options` default | 12 | 60 |
+
+Generic Laya's small head budget truncates most of the decision rules in each question
+([why](docs/migration.md#request-mapping)). Its authors report 0.362 zero-shot accuracy on their typed-decisions
+benchmark against 0.766 after fine-tuning, so do not assume generic Laya drives a browser well. The fine-tune's own
+model card reports about 20–26% on its hardest held-out multi-step suite and notes it often says `DONE` too early.
+**Test the checkpoint you configure**; `scripts/bench_decisions.py` does this offline.
+
+Laya and `laya-browser` are Apache-2.0. Browser Use's `jev-ultrafast` is MIT (see [LICENSE](LICENSE)). The compact
+request format is adapted from the `laya-browser` reference wrapper. Training data licences for the fine-tune are
+listed on its model card.
+
+## Run Google Flights
+
+```bash
+uv run --env-file .env python examples/flights.py --keep-open
+```
+
+It runs the search, takes a **fresh** observation, independently checks the one-way setting, Zürich, London, September
+20 2026, and visible matching flights, and saves a trace plus the metrics. It does not select or book a flight, and a
+`DONE` choice alone never counts as success.
 
 ```python
-from jev_ultrafast import Agent
+from laya_ultrafast import Agent
 
-with Agent(
-    "https://www.google.com/travel/flights?hl=en",
-    "Find one-way flights from Zurich to London on September 20, 2026, "
-    "for one adult in economy. Stop when matching flight options are visible.",
-) as agent:
+with Agent("https://www.google.com/travel/flights?hl=en",
+           "Find one-way flights from Zurich to London on September 20, 2026, for one adult in economy. "
+           "Stop when matching flight options are visible.") as agent:
     for state in agent.run():
         print(state["elapsed_ms"], state["status"])
+    print(agent.snapshot()["metrics"])
 ```
 
-Run with `uv run --env-file .env python your_script.py`. The same policy can run a different task:
+## Add a task
+
+A task is data: a URL, a goal, and an independent check of the final page. There is one agent.
+
+```python
+from laya_ultrafast import Task, run_task
+
+def verify(page):
+    checks = {"on_article": page["url"].endswith("/Kurt_G%C3%B6del")}
+    return {"passed": all(checks.values()), "checks": checks}
+
+task = Task("wikipedia", "https://en.wikipedia.org/wiki/Main_Page",
+            "Find and open the Wikipedia article about Kurt Gödel.", verify)
+result = run_task(task)           # result["passed"] is the verifier's verdict, not the model's DONE
+```
+
+Never put site-specific steps or field values in a task; requirements are goal text.
+
+## Hotels
+
+Hotels are the next task, not a second agent. [examples/hotels.py](examples/hotels.py) runs the same `Agent` against the
+bundled local stays page with a strict check, and builds goals for real sites:
 
 ```bash
-uv run --env-file .env python examples/run.py \
-  --url https://en.wikipedia.org/wiki/Main_Page \
-  --goal 'Find and open the Wikipedia article about Gödel’s incompleteness theorems.'
+uv run --env-file .env python examples/hotels.py --fixture
+uv run --env-file .env python examples/hotels.py --url https://hotels.example --city Stockholm \
+  --dates "14-18 November" --budget "under 800 GBP total" --rating "above 8" \
+  --require "private bathroom" --require "free cancellation"
 ```
 
-`uv run --env-file .env python examples/flights.py --keep-open` performs the flight search, checks the actual route/date/results, and saves its trace. It does not select or book a flight.
+Search → filters → dates → guests → sort → inspection → opening a property uses the operations that already exist;
+nothing in the Laya layer changes. Goals forbid booking, sign-in and payment, and the verifier fails a checkout page,
+but **nothing in the executor technically prevents a model from clicking a booking button**. Real-site filter
+correctness cannot be verified generically.
 
-## Why it moves
+## Benchmarks
 
-- **One request per decision cycle.** Operation and target heads share the same observed state.
-- **No screenshots in the default agent loop.** Jev consumes structured state. The inspector opts into screenshots; the video uses a separate continuous screencast.
-- **One browser call per snapshot.** Read visible controls, their names, values, and text atomically. Keep references to the actual DOM nodes.
-- **Validate the selected target.** Clicks check the document, form values, target, and nearby context. Animation alone does not force another prediction. Resolve current geometry and reject covered controls before input.
-- **Wait for useful state.** After typing into a combobox, wait for visible suggestions, capped at 200 ms. Other interactions get at most two animation frames or 50 ms. These reads happen after execution is logged.
-- **Keep hidden tabs rendering.** Focus emulation prevents background animation throttling without switching Chrome's visible tab.
-- **Send visible text.** Offscreen article bodies and footers do not fill the model context.
-- **Reuse an interrupted text request.** A generated value survives a stale-page retry only if the entire text-helper input is unchanged.
+```bash
+uv run python scripts/bench_decisions.py --repeats 20          # model only, offline, real recorded pages
+git worktree add artifacts/jev-baseline f2fbdd5                # original Jev source, frozen
+uv run --env-file .env python scripts/compare_flights.py --jev-source artifacts/jev-baseline --repeats 3
+```
 
-Every executed target is resolved from an observed node. The executor rechecks page freshness and click occlusion. Model output never becomes selectors, coordinates, shell commands, or executable JavaScript. Text-helper output must parse as a small JSON object before typing.
+The comparison alternates arms and keeps every attempt. Both arms share the browser, viewport, task, text helper and
+verifier. The Jev arm needs your own TypeSafe key. Results and caveats: [performance-laya.md](docs/performance-laya.md).
+The original Jev numbers are kept, labelled, in [performance-jev.md](docs/performance-jev.md).
 
 ## Small enough to read
 
 | File | Job |
 | --- | --- |
-| [agent.py](jev_ultrafast/agent.py) | The complete loop and text-helper handoff |
-| [snapshot.js](jev_ultrafast/snapshot.js) | Atomic DOM snapshot, indexed controls, freshness guards |
-| [browser.py](jev_ultrafast/browser.py) | Browser connection, current geometry, execution |
-| [model.py](jev_ultrafast/model.py) | Dynamic operation/target heads and text generation |
-| [questions.py](jev_ultrafast/questions.py) | Model instructions |
-| [demo.py](jev_ultrafast/demo.py) | Local inspector |
+| [agent.py](laya_ultrafast/agent.py) | The complete loop, text-helper handoff, metrics |
+| [model.py](laya_ultrafast/model.py) | `DecisionModel` interface, action space, request, strict validation |
+| [laya_backend.py](laya_ultrafast/laya_backend.py) | In-process Laya: load once, compact request, coarse-to-fine |
+| [text_helper.py](laya_ultrafast/text_helper.py) | The separate text LLM |
+| [questions.py](laya_ultrafast/questions.py) | Decision rules and text instructions |
+| [snapshot.js](laya_ultrafast/snapshot.js) · [browser.py](laya_ultrafast/browser.py) | Atomic DOM snapshot; execution and freshness |
+| [task.py](laya_ultrafast/task.py) | `Task` and `run_task` with independent verification |
+| [demo.py](laya_ultrafast/demo.py) | Local inspector |
+
+Architecture and migration: [docs/migration.md](docs/migration.md) · [docs/design.md](docs/design.md).
 
 ## Evidence and limits
 
-The current video is a **7,073 ms** Google Flights run. Timing starts after initial page observation and includes model calls, generated text, browser work, stale decisions, and loading waits. A fresh independent check verifies the one-way setting, Zürich, London, September 20, 2026, and visible flight options. The video plays at 1×, with no opening hold and a 0.5-second final hold.
+EVIDENCE_PLACEHOLDER
 
-In six alternating runs with identical models and settings, both versions passed **3/3**. Median task time went from **9.450 s → 7.092 s**, a **25% reduction**; median browser protocol calls went from **1,092 → 101**. This is three repeats of one task on one browser profile, not a general reliability benchmark.
-
-The same policy opened the requested Wikipedia article in **2.798 s** and passed a local hotel search/filter task in **1.896 s**. Runs, failures, source hashes, and measurement boundaries are in [performance.md](docs/performance.md).
-
-A `DONE` choice still requires independent outcome verification. The DOM reader handles common HTML and ARIA controls, not the full accessible-name specification. Shadow roots, frames, canvas, uploads, pop-up tabs, nested scrolling, and arbitrary keyboard widgets remain outside this MVP. Owned tabs share the existing Chrome profile.
+The DOM reader handles common HTML and ARIA controls, not the full accessible-name specification. Shadow roots, frames,
+canvas, uploads, pop-up tabs, nested scrolling, and arbitrary keyboard widgets are outside this MVP. Owned tabs share
+the existing browser profile unless you point `BU_CDP_URL` elsewhere. A `DONE` choice still requires independent
+outcome verification. This project makes no claim that Laya is faster, cheaper, or more accurate than Jev.
 
 ## Development
 
 ```bash
 uv run ruff check .
 uv run pytest
-node --check jev_ultrafast/static/app.js
-node --check jev_ultrafast/snapshot.js
+node --check laya_ultrafast/static/app.js
+node --check laya_ultrafast/snapshot.js
 uv build
 ```
 
-Tests are offline. `uv run python scripts/check_guards.py` checks real controls in a local browser without model calls. Live examples and recording scripts make paid API calls. `scripts/record_flights.py <new-folder>` captures original browser timestamps; `scripts/render_demo.py <recording-folder>` renders that verified run at 1× and crops out the Google account strip. Credentials and raw traces stay ignored.
+Tests are offline (a fixture blocks sockets) and need no model weights or API keys. Live examples, recording scripts and
+`scripts/compare_flights.py` call a browser and a paid text-helper API. Credentials and raw traces stay ignored.
 
 ---
 
-[Browser Use](https://github.com/browser-use/browser-use) · [Browser Harness](https://github.com/browser-use/browser-harness) · [TypeSafe speculative fan-out](https://docs.typesafe.ai/patterns/fan-out)
+[Browser Use](https://github.com/browser-use/browser-use) · [jev-ultrafast](https://github.com/browser-use/jev-ultrafast) ·
+[Browser Harness](https://github.com/browser-use/browser-harness) · [Laya](https://github.com/NandhaKishorM/laya) ·
+[laya-browser](https://huggingface.co/cklxx/laya-browser)

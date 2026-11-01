@@ -1,4 +1,4 @@
-"""Loopback-only inspector for the Jev browser agent."""
+"""Loopback-only inspector for the Laya browser agent."""
 
 import atexit
 import json
@@ -10,10 +10,11 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .agent import Agent
+from .laya_backend import DEFAULT_MODEL, decision_model_from_env
 from .questions import MAX_STEPS
 
 ROOT = Path(__file__).parent
-PORT = int(os.environ.get("TYPESAFE_DEMO_PORT", "8766"))
+PORT = int(os.environ.get("LAYA_DEMO_PORT", "8766"))
 ORIGIN = f"http://127.0.0.1:{PORT}"
 TOKEN = secrets.token_urlsafe(32)
 LOCK = threading.Lock()
@@ -23,7 +24,7 @@ AGENT = None
 def load_environment():
     path = Path.cwd() / ".env"
     if path.exists():
-        for line in path.read_text().splitlines():
+        for line in path.read_text(encoding="utf-8").splitlines():
             if "=" in line and not line.startswith("#"):
                 key, value = line.split("=", 1)
                 os.environ.setdefault(key, value)
@@ -31,7 +32,12 @@ def load_environment():
 
 def response_state():
     state = AGENT.snapshot() if AGENT else {"page": None, "status": "idle", "history": [], "decision": None}
-    return {**state, "text_model": os.environ.get("TEXT_MODEL", "deepseek-chat"), "max_steps": MAX_STEPS}
+    return {
+        **state,
+        "text_model": os.environ.get("TEXT_MODEL", "deepseek-chat"),
+        "decision_model": AGENT.decider.description if AGENT else os.environ.get("LAYA_MODEL", DEFAULT_MODEL),
+        "max_steps": MAX_STEPS,
+    }
 
 
 def close_browser():
@@ -98,7 +104,7 @@ class Handler(BaseHTTPRequestHandler):
         if path not in files:
             return self.send(404, "Not found", "text/plain")
         name, mime = files[path]
-        content = (ROOT / "static" / name).read_text().replace("__TOKEN__", TOKEN)
+        content = (ROOT / "static" / name).read_text(encoding="utf-8").replace("__TOKEN__", TOKEN)
         self.send(200, content, mime + "; charset=utf-8")
 
     def do_POST(self):
@@ -130,9 +136,15 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     load_environment()
+    try:
+        decider = decision_model_from_env()  # loaded once here, so no demo pays for it
+    except RuntimeError as error:
+        raise SystemExit(str(error)) from None
+    if decider.agent is not None:
+        print(f"Decision model: {decider.description} · load {decider.load_ms} ms · warm-up {decider.warmup_ms} ms")
     atexit.register(close_browser)
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    print(f"Jev Ultrafast: {ORIGIN}", flush=True)
+    print(f"Laya Ultrafast: {ORIGIN}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

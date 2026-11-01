@@ -1,0 +1,276 @@
+{
+ "name": "flights_home",
+ "source": "recorded with Browser.observe in headless Edge, throwaway profile",
+ "task": "flights",
+ "ok_operations": [],
+ "ok_labels": [
+  "Change ticket type",
+  "Where from?",
+  "Where to?",
+  "Departure"
+ ],
+ "note": "Real Google Flights home page (fresh profile; origin prefilled by Google). Any trip-setting control is a sensible first move.",
+ "page": {
+  "url": "https://www.google.com/travel/flights?hl=en",
+  "title": "Find Cheap Flights Worldwide & Book Your Ticket - Google Flights",
+  "text": "Skip to main content\nAccessibility feedback\nExplore\nFlights\nHotels\nVacation rentals\nSign in\nFlights\n1\nExplore\nFlexible? Discover the best flight deals with AI\nDescribe your ideal trip, and let Google Flights find the best deals for you\nExplore deals with AI\nFind and book cheap flights worldwide and track prices\nFind cheap flights from United Kingdom to anywhere\nLondon\nManchester\nEdinburgh\nBirmingham",
+  "actions": [
+   {
+    "node": 1,
+    "role": "button",
+    "label": "Main menu",
+    "expanded": "false",
+    "kind": "click",
+    "value": "",
+    "id": "e1"
+   },
+   {
+    "node": 2,
+    "role": "link",
+    "label": "Google",
+    "kind": "click",
+    "value": "",
+    "id": "e2"
+   },
+   {
+    "node": 3,
+    "role": "button",
+    "label": "Skip to main content",
+    "kind": "click",
+    "value": "",
+    "id": "e3"
+   },
+   {
+    "node": 4,
+    "role": "button",
+    "label": "Accessibility feedback",
+    "kind": "click",
+    "value": "",
+    "id": "e4"
+   },
+   {
+    "node": 5,
+    "role": "link",
+    "label": "Explore",
+    "kind": "click",
+    "value": "",
+    "id": "e5"
+   },
+   {
+    "node": 6,
+    "role": "link",
+    "label": "Flights",
+    "kind": "click",
+    "value": "",
+    "id": "e6"
+   },
+   {
+    "node": 7,
+    "role": "link",
+    "label": "Hotels",
+    "kind": "click",
+    "value": "",
+    "id": "e7"
+   },
+   {
+    "node": 8,
+    "role": "link",
+    "label": "Vacation rentals",
+    "kind": "click",
+    "value": "",
+    "id": "e8"
+   },
+   {
+    "node": 9,
+    "role": "button",
+    "label": "Change appearance",
+    "expanded": "false",
+    "kind": "click",
+    "value": "",
+    "id": "e9"
+   },
+   {
+    "node": 10,
+    "role": "button",
+    "label": "Google apps",
+    "expanded": "false",
+    "kind": "click",
+    "value": "",
+    "id": "e10"
+   },
+   {
+    "node": 11,
+    "role": "link",
+    "label": "Sign in",
+    "kind": "click",
+    "value": "",
+    "id": "e11"
+   },
+   {
+    "node": 12,
+    "role": "combobox",
+    "label": "Change ticket type. Round trip",
+    "expanded": "false",
+    "kind": "click",
+    "value": "Round trip",
+    "id": "e12"
+   },
+   {
+    "node": 13,
+    "role": "button",
+    "label": "1 passenger, change number of passengers.",
+    "kind": "click",
+    "value": "",
+    "id": "e13"
+   },
+   {
+    "node": 14,
+    "role": "combobox",
+    "label": "Change seating class. Economy",
+    "expanded": "false",
+    "kind": "click",
+    "value": "Economy",
+    "id": "e14"
+   },
+   {
+    "node": 15,
+    "role": "combobox",
+    "label": "Where from?",
+    "expanded": "false",
+    "kind": "fill",
+    "value": "London",
+    "id": "e15"
+   },
+   {
+    "node": 15,
+    "role": "combobox",
+    "label": "Open Where from?",
+    "expanded": "false",
+    "kind": "click",
+    "value": "London",
+    "id": "e16"
+   },
+   {
+    "node": 16,
+    "role": "combobox",
+    "label": "Where to? ",
+    "expanded": "false",
+    "kind": "fill",
+    "value": "",
+    "id": "e17"
+   },
+   {
+    "node": 16,
+    "role": "combobox",
+    "label": "Open Where to? ",
+    "expanded": "false",
+    "kind": "click",
+    "value": "",
+    "id": "e18"
+   },
+   {
+    "node": 17,
+    "role": "textbox",
+    "label": "Departure",
+    "kind": "fill",
+    "value": "",
+    "id": "e19"
+   },
+   {
+    "node": 17,
+    "role": "textbox",
+    "label": "Open Departure",
+    "kind": "click",
+    "value": "",
+    "id": "e20"
+   },
+   {
+    "node": 18,
+    "role": "textbox",
+    "label": "Return",
+    "kind": "fill",
+    "value": "",
+    "id": "e21"
+   },
+   {
+    "node": 18,
+    "role": "textbox",
+    "label": "Open Return",
+    "kind": "click",
+    "value": "",
+    "id": "e22"
+   },
+   {
+    "node": 19,
+    "role": "button",
+    "label": "Explore destinations",
+    "kind": "click",
+    "value": "",
+    "id": "e23"
+   },
+   {
+    "node": 20,
+    "role": "button",
+    "label": "Explore deals with AI",
+    "kind": "click",
+    "value": "",
+    "id": "e24"
+   },
+   {
+    "node": 21,
+    "role": "button",
+    "label": "Learn more about this section",
+    "kind": "click",
+    "value": "",
+    "id": "e25"
+   },
+   {
+    "node": 22,
+    "role": "tab",
+    "label": "London",
+    "selected": "true",
+    "kind": "click",
+    "value": "",
+    "id": "e26"
+   },
+   {
+    "node": 23,
+    "role": "tab",
+    "label": "Manchester",
+    "selected": "false",
+    "kind": "click",
+    "value": "",
+    "id": "e27"
+   },
+   {
+    "node": 24,
+    "role": "tab",
+    "label": "Edinburgh",
+    "selected": "false",
+    "kind": "click",
+    "value": "",
+    "id": "e28"
+   },
+   {
+    "node": 25,
+    "role": "tab",
+    "label": "Birmingham",
+    "selected": "false",
+    "kind": "click",
+    "value": "",
+    "id": "e29"
+   },
+   {
+    "id": "scroll_down",
+    "kind": "scroll",
+    "label": "Scroll down",
+    "delta": 560
+   },
+   {
+    "id": "wait",
+    "kind": "wait",
+    "label": "Wait for the page to update"
+   }
+  ]
+ }
+}

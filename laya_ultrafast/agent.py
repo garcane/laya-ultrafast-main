@@ -1,21 +1,27 @@
 """The complete agent loop. Typed choices, observable state, bounded execution."""
 
 import base64
+import statistics
 import time
 from pathlib import Path
 
+from . import browser as browser_module
 from .browser import Browser, StalePage
-from .model import action_space, choose, field_context, field_text
+from .laya_backend import decision_model_from_env
+from .model import action_space, choose
 from .questions import MAX_STEPS
+from .text_helper import field_context, field_text
 
 
 class Agent:
-    def __init__(self, url, goals, *, record_dir=None, screenshots=False):
+    def __init__(self, url, goals, *, decider=None, record_dir=None, screenshots=False):
         task = goals.strip() if isinstance(goals, str) else "\n".join(goals).strip()
         if not task:
             raise ValueError("Supply a task")
         plan = [task]
         self.pending_text = None
+        # Load the decision model before opening a tab, so a slow or failing load never leaves a page open.
+        self.decider = decider or decision_model_from_env()
         self.browser = Browser(url)
         self.record_dir = Path(record_dir) if record_dir else None
         self.screenshots = screenshots or bool(record_dir)
@@ -37,6 +43,7 @@ class Agent:
             text_calls=[],
             elapsed_ms=0,
             started_at=None,
+            cdp_start=None,
             record=bool(self.record_dir),
         )
         if self.record_dir:
@@ -45,8 +52,33 @@ class Agent:
 
     def snapshot(self):
         return {
-            **{k: v for k, v in self.state.items() if k != "browser"},
+            **{k: v for k, v in self.state.items() if k not in {"browser", "cdp_start"}},
             "elements": action_space(self.state["page"]["actions"])[0],
+            "metrics": self.metrics(),
+        }
+
+    def metrics(self):
+        """Decision, browser, and text-helper cost kept apart. Model load is never part of a decision."""
+        state = self.state
+        decisions = state["decisions"]
+        latencies = [d["latency_ms"] for d in decisions]
+        cdp = browser_module.stats()
+        start = state.get("cdp_start") or {"calls": 0, "ms": 0.0}
+        decider = getattr(self, "decider", None)
+        return {
+            "decision_model": getattr(decider, "description", None),
+            "decisions": len(decisions),
+            "model_calls": sum(d.get("model_calls", 1) for d in decisions),
+            "decision_ms": sum(latencies),
+            "first_decision_ms": latencies[0] if latencies else None,
+            "steady_decision_median_ms": statistics.median(latencies[1:]) if len(latencies) > 1 else None,
+            "model_load_ms": getattr(decider, "load_ms", 0),
+            "model_warmup_ms": getattr(decider, "warmup_ms", 0),
+            "browser_calls": cdp["calls"] - start["calls"],
+            "browser_ms": round(cdp["ms"] - start["ms"]),
+            "text_helper_calls": len(state["text_calls"]),
+            "text_helper_ms": sum(c["latency_ms"] for c in state["text_calls"]),
+            "elapsed_ms": state["elapsed_ms"],
         }
 
     def command(self, name, body=None):
@@ -67,6 +99,7 @@ class Agent:
                 raise ValueError("Start a demo first")
             if state["started_at"] is None:
                 state["started_at"] = time.perf_counter()
+                state["cdp_start"] = browser_module.stats()
             if not state["browser"].fresh(state["page"]):
                 state["page"] = state["browser"].observe(screenshot=self.screenshots)
             state["decision"] = None
@@ -74,7 +107,7 @@ class Agent:
                 raise ValueError("This run has stopped. Start a fresh demo.")
             if len(state["decisions"]) >= MAX_STEPS * 2:
                 raise ValueError("Reached the demo's model-call budget")
-            state["decision"] = choose(state["page"], state["goal"], state["history"])
+            state["decision"] = choose(state["page"], state["goal"], state["history"], self.decider)
             state["decisions"].append(
                 {
                     **state["decision"],

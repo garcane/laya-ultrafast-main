@@ -1,0 +1,69 @@
+{
+ "name": "consent_buttons",
+ "source": "recorded with Browser.observe in headless Edge, throwaway profile",
+ "task": "flights",
+ "ok_operations": [],
+ "ok_labels": [
+  "Reject all",
+  "Accept all"
+ ],
+ "note": "Same consent page after scrolling. Either consent button progresses.",
+ "page": {
+  "url": "https://consent.google.com/m?continue=https://www.google.com/travel/flights?hl%3Den&gl=GB&m=0&pc=flt&cm=2&hl=en&src=1",
+  "title": "Before you continue",
+  "text": "If you choose to “Accept all,” we will also use cookies and data, including IP addresses, to\nDevelop and improve new services\nDeliver and measure the effectiveness of ads\nShow personalized content, depending on your settings\nShow personalized ads, depending on your settings\nIf you choose to “Reject all,” we will not use cookies or IP addresses for these additional purposes.\nNon-personalized content is influenced by things like the content you’re currently viewing, activity in your active Search session, and your location. Non-personalized ads are influenced by the content you’re currently viewing and your general location. Personalized content and ads can also include more relevant results, recommendations, and tailored ads based on past activity from this browser, like previous Google searches. We also use cookies and data to tailor the experience to be age-appropriate, if relevant.\nSelect “More options” to see additional information, including details about managing your privacy settings. You can also visit g.co/privacytools at any time.",
+  "actions": [
+   {
+    "node": 4,
+    "role": "button",
+    "label": "Reject all",
+    "kind": "click",
+    "value": "",
+    "id": "e1"
+   },
+   {
+    "node": 5,
+    "role": "button",
+    "label": "Accept all",
+    "kind": "click",
+    "value": "",
+    "id": "e2"
+   },
+   {
+    "node": 6,
+    "role": "link",
+    "label": "More options for personalization settings and cookies",
+    "kind": "click",
+    "value": "",
+    "id": "e3"
+   },
+   {
+    "node": 7,
+    "role": "link",
+    "label": "Privacy Policy",
+    "kind": "click",
+    "value": "",
+    "id": "e4"
+   },
+   {
+    "node": 8,
+    "role": "link",
+    "label": "Terms of Service",
+    "kind": "click",
+    "value": "",
+    "id": "e5"
+   },
+   {
+    "id": "scroll_up",
+    "kind": "scroll",
+    "label": "Scroll up",
+    "delta": -560
+   },
+   {
+    "id": "wait",
+    "kind": "wait",
+    "label": "Wait for the page to update"
+   }
+  ]
+ }
+}

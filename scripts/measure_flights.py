@@ -1,7 +1,12 @@
-"""One live measured flight search; freeze source externally to compare revisions."""
+"""One live measured flight search. `--source` may be this checkout (Laya) or a frozen original Jev checkout.
+
+Both arms use the same task, the same independent verifier (imported from this checkout), and the same
+browser setup. Run `scripts/compare_flights.py` to alternate arms and summarise.
+"""
 
 import argparse
 import hashlib
+import importlib
 import json
 import os
 import sys
@@ -14,9 +19,10 @@ parser.add_argument("--source", default=".")
 parser.add_argument("--output", required=True)
 args = parser.parse_args()
 source = Path(args.source).resolve()
+package = "laya_ultrafast" if (source / "laya_ultrafast").is_dir() else "jev_ultrafast"
 sys.path.insert(0, str(source))
-from jev_ultrafast import Agent  # noqa: E402
-from jev_ultrafast import browser as browser_module  # noqa: E402
+Agent = importlib.import_module(package).Agent
+browser_module = importlib.import_module(package + ".browser")
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from examples.flights import GOALS, URL, verify  # noqa: E402
@@ -25,7 +31,7 @@ folder = Path(args.output)
 folder.mkdir(parents=True, exist_ok=False)
 source_hashes = {
     p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-    for p in (source / "jev_ultrafast").iterdir() if p.suffix in {".py", ".js"}
+    for p in (source / package).iterdir() if p.suffix in {".py", ".js"}
 }
 raw = browser_module.cdp
 calls = defaultdict(list)
@@ -39,8 +45,10 @@ def timed(method, *positional, **kwargs):
 
 
 browser_module.cdp = timed
+started_setup = time.perf_counter()
 agent = Agent(URL, GOALS)
-# Setup is excluded in both arms, as in the original demo.
+setup_ms = round((time.perf_counter() - started_setup) * 1000)
+# Setup (model load, browser, first page) is excluded from the task clock in both arms.
 calls.clear()
 error = None
 try:
@@ -56,15 +64,20 @@ finally:
     final = agent.browser.observe(screenshot=True)
     state["verification"] = verify(final)
     state["error"] = error
+    state["setup_ms"] = setup_ms
     state["cdp"] = measured_calls
     state["source_hashes"] = source_hashes
     state["task_hash"] = hashlib.sha256(json.dumps([URL, GOALS]).encode()).hexdigest()
     state["configuration"] = {
         key: os.environ.get(key)
-        for key in ("TYPESAFE_MODEL", "TEXT_MODEL", "TEXT_MODEL_BASE_URL", "TEXT_MODEL_REASONING")
+        for key in (
+            "TYPESAFE_MODEL", "LAYA_MODEL", "LAYA_DEVICE", "LAYA_REVISION", "LAYA_MAX_LEN", "LAYA_HEAD_MAX_LEN",
+            "LAYA_MAX_OPTIONS", "TEXT_MODEL", "TEXT_MODEL_BASE_URL", "TEXT_MODEL_REASONING",
+        )
     }
+    state["package"] = package
     state["browser_version"] = agent.browser.call("Browser.getVersion")["product"]
     state["final_page"] = final
-    (folder / "state.json").write_text(json.dumps(state, indent=2))
+    (folder / "state.json").write_text(json.dumps(state, indent=2), encoding="utf-8")
     agent.close()
 print("VERIFIED", state["verification"]["passed"], "ERROR", error, flush=True)

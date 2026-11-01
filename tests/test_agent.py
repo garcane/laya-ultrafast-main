@@ -7,9 +7,11 @@ from unittest.mock import Mock
 
 import pytest
 
-from jev_ultrafast import agent as loop
-from jev_ultrafast import model
-from jev_ultrafast.browser import StalePage, browser_operation, fingerprint
+from laya_ultrafast import agent as loop
+from laya_ultrafast import model, text_helper
+from laya_ultrafast.browser import StalePage, browser_operation, fingerprint
+
+from .fakes import FakeDecider, pick
 
 
 def page():
@@ -60,7 +62,7 @@ def test_invalid_choice_is_rejected(mutation):
         a["choice"] = "b"
     else:
         a["confidence"] = 5
-    with pytest.raises(ValueError, match="Invalid TypeSafe"):
+    with pytest.raises(ValueError, match="Invalid decision"):
         model.validate_choice(a, {"a", "b"})
 
 
@@ -74,78 +76,61 @@ def test_one_index_per_node_with_operation_specific_targets():
     assert "WAIT" in controls
 
 
-def test_all_heads_are_one_request_and_only_matching_head_executes(monkeypatch):
-    calls = []
+def test_all_heads_are_one_request_and_only_matching_head_executes():
+    def script(qid, question):
+        if qid == "operation":
+            return pick(question["criteria"], "TYPE_TEXT")
+        if qid == "type_text_target":
+            return pick(question["criteria"], "1")
+        return {"choice": "invented"}  # an unselected head may be garbage; it must never be consumed
 
-    def post(_url, _key, body):
-        calls.append(body)
-        return {
-            "model": "test",
-            "answers": {
-                "operation": choice(body["questions"]["operation"]["criteria"], "TYPE_TEXT"),
-                "type_text_target": choice(["1"], "1"),
-                "click_target": {"choice": "invented"},
-            },
-        }
-
-    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
-    monkeypatch.setattr(model, "post_json", post)
-    d = model.choose(page(), "Find a book", [])
-    assert len(calls) == 1
+    decider = FakeDecider(script)
+    d = model.choose(page(), "Find a book", [], decider)
+    assert len(decider.calls) == 1
     assert d["operation"] == "TYPE_TEXT" and d["target"] == "1" and d["choice"] == "e1"
-    assert set(calls[0]["questions"]) == {"operation", "click_target", "type_text_target"}
+    assert set(decider.calls[0][1]) == {"operation", "click_target", "type_text_target"}
 
 
-def test_click_cannot_consume_a_text_target(monkeypatch):
-    def post(_url, _key, body):
-        return {
-            "model": "test",
-            "answers": {
-                "operation": choice(body["questions"]["operation"]["criteria"], "CLICK"),
-                "type_text_target": choice(["1"], "1"),
-                "click_target": choice(["1", "2", "999"], "999"),
-            },
-        }
+def test_click_cannot_consume_a_text_target():
+    def script(qid, question):
+        if qid == "operation":
+            return pick(question["criteria"], "CLICK")
+        if qid == "type_text_target":
+            return pick(question["criteria"], "1")
+        return pick(["1", "2", "999"], "999")
 
-    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
-    monkeypatch.setattr(model, "post_json", post)
-    with pytest.raises(ValueError, match="Invalid TypeSafe"):
-        model.choose(page(), "Find a book", [])
+    with pytest.raises(ValueError, match="Invalid decision"):
+        model.choose(page(), "Find a book", [], FakeDecider(script))
 
 
-def test_target_head_receives_control_state_and_full_next_step_rules(monkeypatch):
+def test_target_head_receives_control_state_and_full_next_step_rules():
     p = page()
     p["actions"].insert(0, {
         "id": "toggle", "kind": "click", "label": "Free cancellation", "node": 30,
         "role": "checkbox", "checked": "true", "selected": False,
     })
 
-    def post(_url, _key, body):
-        questions = body["questions"]
-        target = questions["click_target"]
-        assert target["criteria"]["1"]["checked"] == "true"
-        assert target["criteria"]["1"]["selected"] is False
-        assert questions["operation"]["instructions"]["rules"] in target["instructions"]["rules"]
-        return {
-            "model": "test",
-            "answers": {
-                "operation": choice(questions["operation"]["criteria"], "CLICK"),
-                "click_target": choice(target["criteria"], "3"),
-            },
-        }
+    def script(qid, question):
+        if qid == "operation":
+            return pick(question["criteria"], "CLICK")
+        if qid == "click_target":
+            assert question["criteria"]["1"]["checked"] == "true"
+            assert question["criteria"]["1"]["selected"] is False
+            return pick(question["criteria"], "3")
 
-    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
-    monkeypatch.setattr(model, "post_json", post)
-    d = model.choose(p, "Search with free cancellation", [])
+    decider = FakeDecider(script)
+    d = model.choose(p, "Search with free cancellation", [], decider)
     assert d["choice"] == "e3"
+    questions = decider.calls[0][1]
+    assert questions["operation"]["instructions"]["rules"] in questions["click_target"]["instructions"]["rules"]
 
 
 def test_quoted_task_text_still_uses_the_llm(monkeypatch):
     monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
     post = Mock(return_value={"choices": [{"message": {"content": '{"text":"Zurich"}'}}]})
-    monkeypatch.setattr(model, "post_json", post)
-    context = model.field_context('Fly from "Zurich" to London', page()["actions"][0], page(), [])
-    assert model.field_text(context)[0] == "Zurich"
+    monkeypatch.setattr(text_helper, "post_json", post)
+    context = text_helper.field_context('Fly from "Zurich" to London', page()["actions"][0], page(), [])
+    assert text_helper.field_text(context)[0] == "Zurich"
     assert post.call_count == 1
     sent = json.loads(post.call_args.args[2]["messages"][1]["content"])
     assert sent["goal"] == 'Fly from "Zurich" to London'
@@ -154,7 +139,7 @@ def test_quoted_task_text_still_uses_the_llm(monkeypatch):
 def test_missing_text_credential_stops_before_guessing(monkeypatch):
     monkeypatch.delenv("TEXT_MODEL_API_KEY", raising=False)
     with pytest.raises(ValueError, match="TEXT_MODEL_API_KEY"):
-        model.field_text({"goal": 'Enter "Zurich"'})
+        text_helper.field_text({"goal": 'Enter "Zurich"'})
 
 
 @pytest.fixture
@@ -228,7 +213,7 @@ def test_stale_observation_preserves_executed_action(runner):
 
 
 def test_observation_is_one_atomic_browser_read(monkeypatch):
-    import jev_ultrafast.browser as browser
+    import laya_ultrafast.browser as browser
 
     p = page()
     cdp = Mock(return_value={"result": {"value": p}})
@@ -240,7 +225,7 @@ def test_observation_is_one_atomic_browser_read(monkeypatch):
 
 
 def test_executor_rejects_a_stale_page_before_browser_input(monkeypatch):
-    import jev_ultrafast.browser as browser
+    import laya_ultrafast.browser as browser
 
     b = browser.Browser.__new__(browser.Browser)
     b.fresh = Mock(return_value=False)
@@ -253,7 +238,7 @@ def test_executor_rejects_a_stale_page_before_browser_input(monkeypatch):
 
 @pytest.mark.parametrize("response", [{"exceptionDetails": {}}, {"result": {}}])
 def test_interrupted_dropdown_mutation_cannot_be_retried_as_stale(monkeypatch, response):
-    import jev_ultrafast.browser as browser
+    import laya_ultrafast.browser as browser
 
     # A navigation can destroy the evaluation result after the change event already fired.
     if "exceptionDetails" in response:
@@ -307,9 +292,9 @@ def test_flight_verification_rejects_wrong_trip(changed):
 )
 def test_text_helper_rejects_invalid_values(monkeypatch, content):
     monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
-    monkeypatch.setattr(model, "post_json", Mock(return_value={"choices": [{"message": {"content": content}}]}))
+    monkeypatch.setattr(text_helper, "post_json", Mock(return_value={"choices": [{"message": {"content": content}}]}))
     with pytest.raises(ValueError, match="nothing typed"):
-        model.field_text({"goal": "Find a flight"})
+        text_helper.field_text({"goal": "Find a flight"})
 
 
 def test_navigation_during_prediction_reobserves_without_action(runner):

@@ -1,0 +1,53 @@
+{
+ "name": "consent_top",
+ "source": "recorded with Browser.observe in headless Edge, throwaway profile",
+ "task": "flights",
+ "ok_operations": [
+  "SCROLL_DOWN"
+ ],
+ "ok_labels": [],
+ "note": "Real Google consent page, buttons below the fold. Only scrolling can progress.",
+ "page": {
+  "url": "https://consent.google.com/m?continue=https://www.google.com/travel/flights?hl%3Den&gl=GB&m=0&pc=flt&cm=2&hl=en&src=1",
+  "title": "Before you continue",
+  "text": "Before you continue to Google\nWe use\ncookies\nand data, including IP addresses, to\nDeliver and maintain Google services\nTrack outages and protect against spam, fraud, and abuse\nMeasure audience engagement and site statistics to understand how our services are used and enhance the quality of those services\nIf you choose to “Accept all,” we will also use cookies and data, including IP addresses, to\nDevelop and improve new services\nDeliver and measure the effectiveness of ads\nShow personalized content, depending on your settings\nShow personalized ads, depending on your settings\nIf you choose to “Reject all,” we will not use cookies or IP addresses for these additional purposes.\nNon-personalized content is influenced by things like the content you’re currently viewing, activity in your active Search session, and your location. Non-personalized ads are influenced by the content you’re currently viewing and your general location. Personalized content and ads can also include more relevant results, recommendations, and tailored ads based on past activity from this browser, like previous Google searches. We also use cookies and data to tailor the experience to be age-appropriate, if relevant.",
+  "actions": [
+   {
+    "node": 1,
+    "role": "button",
+    "label": "Language: English",
+    "expanded": "false",
+    "kind": "click",
+    "value": "",
+    "id": "e1"
+   },
+   {
+    "node": 2,
+    "role": "link",
+    "label": "Sign in",
+    "kind": "click",
+    "value": "",
+    "id": "e2"
+   },
+   {
+    "node": 3,
+    "role": "link",
+    "label": "cookies  (Opens in a new tab)",
+    "kind": "click",
+    "value": "",
+    "id": "e3"
+   },
+   {
+    "id": "scroll_down",
+    "kind": "scroll",
+    "label": "Scroll down",
+    "delta": 560
+   },
+   {
+    "id": "wait",
+    "kind": "wait",
+    "label": "Wait for the page to update"
+   }
+  ]
+ }
+}

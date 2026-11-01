@@ -1,30 +1,21 @@
-"""TypeSafe makes choices; an optional small OpenAI-compatible model writes field values."""
+"""Operation + target decisions. A DecisionModel answers typed questions; this module validates every answer."""
 
-import json
 import math
-import os
 import time
+from typing import Protocol
 
-import httpx
-
-from .questions import NEXT_ACTION, TARGET, TEXT_VALUE
-
-CLIENT = httpx.Client(http2=True, timeout=25)
+from .questions import NEXT_ACTION, TARGET
 
 
-def post_json(url, key, body):
-    for attempt in range(3):
-        try:
-            response = CLIENT.post(url, json=body, headers={"Authorization": f"Bearer {key}"})
-        except httpx.HTTPError:
-            raise RuntimeError("Model connection failed; no action executed.") from None
-        if response.status_code in {429, 529, 503} and attempt < 2:
-            time.sleep(0.5 * 2**attempt)
-            continue
-        if response.is_error:
-            raise RuntimeError(f"Model provider returned HTTP {response.status_code}; no action executed.")
-        return response.json()
-    raise RuntimeError("Model unavailable")
+class DecisionModel(Protocol):
+    """The whole integration boundary: typed questions in, typed answers out.
+
+    `choose` returns `{"answers": {question_id: {"choice", "probabilities", "confidence"}}, "model": str, ...}`
+    and may add `usage`, `model_calls`, and `info`. It must not mutate the browser; its answers are untrusted
+    until `validate_choice` accepts them.
+    """
+
+    def choose(self, state: dict, questions: dict) -> dict: ...
 
 
 def validate_choice(answer, ids):
@@ -38,10 +29,10 @@ def validate_choice(answer, ids):
             and abs(sum(probabilities.values()) - 1) < 0.02
             and probabilities[answer["choice"]] >= max(probabilities.values()) - 1e-6
         )
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError, AttributeError):
         valid = False
     if not valid:
-        raise ValueError("Invalid TypeSafe response; no action executed.")
+        raise ValueError("Invalid decision response; no action executed.")
     return answer
 
 
@@ -78,8 +69,9 @@ def action_space(actions):
     return elements, targets, controls
 
 
-def choose(state, goal, history):
-    elements, targets, controls = action_space(state["actions"])
+def build_request(page, goal, history):
+    """The backend-neutral request: observed state plus one operation question and one head per operation."""
+    elements, targets, controls = action_space(page["actions"])
     labels = {
         "CLICK": "Click an element, button, menu option, autocomplete suggestion, or calendar day.",
         "TYPE_TEXT": "Enter or replace text in an editable field. A small LLM will supply the value from the goal.",
@@ -104,27 +96,36 @@ def choose(state, goal, history):
             },
             "instructions": {"goal": goal, "operation": operation, "rules": [NEXT_ACTION, TARGET]},
         }
-    body = {
-        "model": os.environ.get("TYPESAFE_MODEL", "jev-latest"),
-        "state": {
-            "page": {k: state[k] for k in ("url", "title", "text")},
-            "elements": elements,
-            "recent_actions": [
-                {k: h.get(k) for k in ("action", "kind", "text", "page_changed")} for h in history[-10:]
-            ],
-        },
-        "questions": questions,
+    state = {
+        "page": {k: page[k] for k in ("url", "title", "text")},
+        "elements": elements,
+        "recent_actions": [{k: h.get(k) for k in ("action", "kind", "text", "page_changed")} for h in history[-10:]],
     }
+    return state, questions, targets, controls, operations
+
+
+def choose(page, goal, history, decider):
+    state, questions, targets, controls, operations = build_request(page, goal, history)
     started = time.perf_counter()
-    result = post_json("https://api.typesafe.ai/v1/systemone", os.environ["TYPESAFE_API_KEY"], body)
-    operation_answer = validate_choice(result["answers"].get("operation", {}), operations)
+    result = decider.choose(state, questions)
+    total_ms = round((time.perf_counter() - started) * 1000)
+    answers = result.get("answers") if isinstance(result, dict) else None
+    if not isinstance(answers, dict):
+        raise ValueError("Invalid decision response; no action executed.")
+    # A lazy first-call model load is reported on its own; it is not a decision's latency.
+    load_ms = result.get("info", {}).get("load_ms", 0)
+    operation_answer = validate_choice(answers.get("operation", {}), operations)
     operation = operation_answer["choice"]
+    # Options that lost their own token span cannot be told apart by the model; refuse rather than guess among them.
+    collapsed = set(result.get("info", {}).get("collapsed", ()))
+    if collapsed & {"operation", operation.lower() + "_target"}:
+        raise ValueError("Decision options exceeded the model's budget; no action executed.")
     target = None
     target_answer = None
     probabilities = {}
     if operation in targets:
         # Unused target heads cannot cause an action. Validate the head selected by the operation.
-        target_answer = validate_choice(result["answers"].get(operation.lower() + "_target", {}), targets[operation])
+        target_answer = validate_choice(answers.get(operation.lower() + "_target", {}), targets[operation])
         target = target_answer["choice"]
         choice = targets[operation][target]["id"]
         probabilities = {a["id"]: target_answer["probabilities"][index] for index, a in targets[operation].items()}
@@ -140,59 +141,13 @@ def choose(state, goal, history):
         "operation_probabilities": operation_answer["probabilities"],
         "target_probabilities": target_answer["probabilities"] if target_answer else {},
         "target_confidence": target_answer["confidence"] if target_answer else None,
-        "raw_answers": result["answers"],
-        "model": result["model"],
+        "raw_answers": answers,
+        "model": result.get("model"),
+        "model_kind": result.get("kind"),
         "usage": result.get("usage", {}),
-        "latency_ms": round((time.perf_counter() - started) * 1000),
-        "request": body,
-    }
-
-
-def field_context(goal, action, page, history):
-    return {
-        "goal": goal,
-        "field": {k: action.get(k) for k in ("label", "role", "value")},
-        "page": {"title": page["title"], "text": page["text"][:6000]},
-        "recent_actions": [{k: h.get(k) for k in ("action", "text")} for h in history[-6:]],
-    }
-
-
-def field_text(context):
-    key = os.environ.get("TEXT_MODEL_API_KEY")
-    if not key:
-        raise ValueError("TYPE_TEXT needs TEXT_MODEL_API_KEY; no text is hardcoded or guessed by the executor.")
-    base = os.environ.get("TEXT_MODEL_BASE_URL", "https://api.deepseek.com/v1").rstrip("/")
-    model = os.environ.get("TEXT_MODEL", "deepseek-chat")
-    reasoning = {"thinking": {"type": "disabled"}} if "api.deepseek.com/" in base else {"reasoning": {"effort": "low"}}
-    if os.environ.get("TEXT_MODEL_REASONING") == "none":
-        reasoning = {"reasoning": {"enabled": False}}
-    started = time.perf_counter()
-    result = post_json(
-        base + "/chat/completions",
-        key,
-        {
-            "model": model,
-            "max_tokens": 1024,
-            "response_format": {"type": "json_object"},
-            **reasoning,
-            "messages": [
-                {"role": "system", "content": TEXT_VALUE},
-                {
-                    "role": "user",
-                    "content": json.dumps(context),
-                },
-            ],
-        },
-    )
-    try:
-        output = json.loads(result["choices"][0]["message"]["content"])
-        value = output["text"]
-        if set(output) != {"text"} or not isinstance(value, str) or not value.strip() or len(value) > 2000:
-            raise ValueError()
-    except (ValueError, KeyError, TypeError):
-        raise ValueError("Text helper returned no valid field value; nothing typed.") from None
-    return value, {
-        "model": model,
-        "latency_ms": round((time.perf_counter() - started) * 1000),
-        "usage": result.get("usage", {}),
+        "model_calls": result.get("model_calls", 1),
+        "info": result.get("info", {}),
+        "latency_ms": total_ms - load_ms,
+        "load_ms": load_ms,
+        "request": {"state": state, "questions": questions},
     }

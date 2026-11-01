@@ -1,4 +1,4 @@
-"""Live Google Flights search. Calls TypeSafe; never selects or books a flight."""
+"""Live Google Flights search. Laya chooses locally; never selects or books a flight."""
 
 import argparse
 import base64
@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from jev_ultrafast import Agent
+from laya_ultrafast import Agent, Task, run_task
 
 URL = "https://www.google.com/travel/flights?hl=en"
 GOALS = (
@@ -38,6 +38,9 @@ def verify(page):
     return {"passed": all(checks.values()), "checks": checks, "visible_flights": flights}
 
 
+TASK = Task("flights", URL, GOALS, verify)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default="artifacts/flights/latest")
@@ -45,23 +48,26 @@ def main():
     args = parser.parse_args()
     folder = Path(args.output)
     folder.mkdir(parents=True, exist_ok=True)
-    agent = Agent(URL, GOALS)
-    try:
-        for state in agent.run():
-            last = state["history"][-1] if state["history"] else {}
-            print(state["elapsed_ms"], state["status"], last.get("action", ""), flush=True)
-    finally:
-        state = agent.snapshot()
-        state["verification"] = verify(state["page"])
-        (folder / "state.json").write_text(json.dumps(state, indent=2))
-        (folder / "session.json").write_text(
-            json.dumps({"target": agent.browser.target, "session": agent.browser.session})
-        )
-        if not args.keep_open:
-            agent.close()
-    print(json.dumps(state["verification"], indent=2))
-    if not state["verification"]["passed"]:
-        raise SystemExit("Final page did not satisfy the route/date checks")
+    agent = Agent(TASK.url, TASK.goal)
+    print(f"Decision model: {agent.decider.description}", flush=True)
+
+    def progress(state):
+        last = state["history"][-1] if state["history"] else {}
+        print(state["elapsed_ms"], state["status"], last.get("action", ""), flush=True)
+
+    result = run_task(TASK, agent=agent, progress=progress)
+    state = result["state"]
+    state["verification"] = result["verification"]
+    (folder / "state.json").write_text(json.dumps(state, indent=2), encoding="utf-8")
+    (folder / "session.json").write_text(
+        json.dumps({"target": agent.browser.target, "session": agent.browser.session}), encoding="utf-8"
+    )
+    if not args.keep_open:
+        agent.close()
+    print(json.dumps(state["metrics"], indent=2))
+    print(json.dumps(result["verification"], indent=2))
+    if not result["passed"]:
+        raise SystemExit(result["error"] or "Final page did not satisfy the route/date checks")
 
 
 if __name__ == "__main__":

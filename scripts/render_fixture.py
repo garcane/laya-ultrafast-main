@@ -8,7 +8,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 source = ROOT / "artifacts/final"
-state = json.loads((source / "travel-1.json").read_text())
+state = json.loads((source / "travel-1.json").read_text(encoding="utf-8"))
 frames = sorted((int(p.stem), Image.open(p).convert("RGB")) for p in (source / "frames").glob("*.jpg"))
 end_ms = state["elapsed_ms"]
 folder = ROOT / "artifacts/video-frames"
@@ -24,10 +24,10 @@ for index in range(round((end_ms + 2000) * 30 / 1000)):
     canvas = Image.new("RGB", (1240, 960), "#f5f5ed")
     canvas.paste(frame, (60, 105))
     draw = ImageDraw.Draw(canvas)
-    draw.text((60, 34), "BROWSER USE × TYPESAFE", font=font, fill="#283c2c")
+    draw.text((60, 34), "LAYA ULTRAFAST", font=font, fill="#283c2c")
     draw.text((945, 38), f"{t / 1000:0.2f}s / 1×", font=small, fill="#487645")
     step = sum(h["elapsed_ms"] <= t for h in state["history"])
-    draw.text((60, 909), f"Jev Ultrafast     {step}/5 browser actions     Live API calls", font=small, fill="#64745c")
+    draw.text((60, 909), f"Laya Ultrafast    {step}/5 browser actions     Live API calls", font=small, fill="#64745c")
     canvas.save(folder / f"{index:04d}.png")
     images.append(canvas.resize((930, 720)))
 images[0].save(

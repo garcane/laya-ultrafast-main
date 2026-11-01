@@ -12,13 +12,13 @@ from browser_harness.helpers import drain_events
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from examples.flights import GOALS, URL, verify  # noqa: E402
-from jev_ultrafast import Agent  # noqa: E402
+from laya_ultrafast import Agent  # noqa: E402
 
 folder = Path(sys.argv[1] if len(sys.argv) > 1 else "artifacts/flights/recorded")
 folder.mkdir(parents=True, exist_ok=False)
 source_hashes = {
     p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-    for p in (Path(__file__).resolve().parents[1] / "jev_ultrafast").iterdir()
+    for p in (Path(__file__).resolve().parents[1] / "laya_ultrafast").iterdir()
     if p.suffix in {".py", ".js"}
 }
 agent = Agent(URL, GOALS)
@@ -67,8 +67,10 @@ finally:
     state["verification"] = verify(state["final_page"])
     state["source_hashes"] = source_hashes
     state["recording_errors"] = errors
-    (folder / "state.json").write_text(json.dumps(state, indent=2))
-    (folder / "session.json").write_text(json.dumps({"target": agent.browser.target, "session": agent.browser.session}))
+    (folder / "state.json").write_text(json.dumps(state, indent=2), encoding="utf-8")
+    (folder / "session.json").write_text(
+        json.dumps({"target": agent.browser.target, "session": agent.browser.session}), encoding="utf-8"
+    )
 print(json.dumps(state["verification"], indent=2))
 print("Screencast frames", len(list(frames.glob("*.jpg"))), "errors", errors)
 if not state["verification"]["passed"]:

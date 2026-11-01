@@ -1,0 +1,138 @@
+{
+ "name": "fixture_travel",
+ "source": "recorded with Browser.observe in headless Edge, throwaway profile",
+ "task": "hotels-fixture",
+ "ok_operations": [],
+ "ok_labels": [
+  "Destination",
+  "Stay category → Design",
+  "Free cancellation"
+ ],
+ "note": "Bundled local stays page. Any requested control is a sensible first move.",
+ "page": {
+  "url": "file:///C:/Users/Student/jev-ultrafast-main/laya_ultrafast/static/fixture.html?scenario=travel",
+  "title": "Forma · Find a place to slow down",
+  "text": "forma.\nFind a stay\nReading room\nPLACES WITH CHARACTER\nTHE SLOWER WAY TO STAY\nSomewhere you can exhale.\nSmall, considered places. A little closer to what matters.\nCURATED, NOT CROWDED\nFind stays\nCategory\nFree cancellation\n3 places\nLISBON · DESIGN\nCasa Flora\nFree cancellation · 2 guests\n€145\n/ night\nView stay ↗\nCOPENHAGEN · DESIGN\nThe Glasshouse\nFree cancellation · 2 guests\n€210\n/ night\nView stay ↗\nLISBON · NATURE\nSerra Lodge\nNon-refundable · 2 guests\n€120\n/ night\nView stay ↗",
+  "actions": [
+   {
+    "node": 1,
+    "role": "link",
+    "label": "forma.",
+    "kind": "click",
+    "value": "",
+    "id": "e1"
+   },
+   {
+    "node": 2,
+    "role": "link",
+    "label": "Find a stay",
+    "kind": "click",
+    "value": "",
+    "id": "e2"
+   },
+   {
+    "node": 3,
+    "role": "link",
+    "label": "Reading room",
+    "kind": "click",
+    "value": "",
+    "id": "e3"
+   },
+   {
+    "node": 4,
+    "role": "searchbox",
+    "label": "Destination",
+    "kind": "fill",
+    "value": "",
+    "id": "e4"
+   },
+   {
+    "node": 4,
+    "role": "searchbox",
+    "label": "Open Destination",
+    "kind": "click",
+    "value": "",
+    "id": "e5"
+   },
+   {
+    "node": 5,
+    "role": "button",
+    "label": "Find stays",
+    "kind": "click",
+    "value": "",
+    "id": "e6"
+   },
+   {
+    "node": 6,
+    "role": "combobox",
+    "label": "Stay category → Design",
+    "kind": "select",
+    "value": "Design",
+    "current_value": "All stays",
+    "id": "e7"
+   },
+   {
+    "node": 6,
+    "role": "combobox",
+    "label": "Stay category → Nature",
+    "kind": "select",
+    "value": "Nature",
+    "current_value": "All stays",
+    "id": "e8"
+   },
+   {
+    "node": 6,
+    "role": "combobox",
+    "label": "Stay category → Coastal",
+    "kind": "select",
+    "value": "Coastal",
+    "current_value": "All stays",
+    "id": "e9"
+   },
+   {
+    "node": 7,
+    "role": "checkbox",
+    "label": "Free cancellation",
+    "checked": "false",
+    "kind": "click",
+    "value": "on",
+    "id": "e10"
+   },
+   {
+    "node": 8,
+    "role": "button",
+    "label": "View Casa Flora",
+    "kind": "click",
+    "value": "",
+    "id": "e11"
+   },
+   {
+    "node": 9,
+    "role": "button",
+    "label": "View The Glasshouse",
+    "kind": "click",
+    "value": "",
+    "id": "e12"
+   },
+   {
+    "node": 10,
+    "role": "button",
+    "label": "View Serra Lodge",
+    "kind": "click",
+    "value": "",
+    "id": "e13"
+   },
+   {
+    "id": "scroll_down",
+    "kind": "scroll",
+    "label": "Scroll down",
+    "delta": 560
+   },
+   {
+    "id": "wait",
+    "kind": "wait",
+    "label": "Wait for the page to update"
+   }
+  ]
+ }
+}
